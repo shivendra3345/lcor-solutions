@@ -106,9 +106,9 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
         return result;
     }
 
-    private getSimplePropertyDetails(prop: string): { name?: string; location?: string; unitCount?: string } {
+    private getSimplePropertyDetails(prop: string): { name?: string; location?: string; unitCount?: string; unitTypes?: string } {
         const details = this.getPropertyDetails(prop);
-        const result: { name?: string; location?: string; unitCount?: string } = {};
+        const result: { name?: string; location?: string; unitCount?: string; unitTypes?: string } = {};
         if (!details || details.length === 0) return result;
         details.forEach(d => {
             const label = (d.label || '').toLowerCase();
@@ -118,11 +118,158 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                 if (!result.name) result.name = value;
             } else if (label === 'location' || label.indexOf('location') >= 0) {
                 if (!result.location) result.location = value;
-            } else if (label === 'unit count' || label === 'unitcount' || label.indexOf('unit') >= 0) {
-                if (!result.unitCount) result.unitCount = value;
+            } else {
+                // More specific unit-count detection to avoid capturing 'unit types' rows
+                const isUnitCount = label === 'unit count' || label === 'unitcount' || label === 'total units' || label === 'totalunits' || label === 'units' || /total.*unit/.test(label) || /unit.*total/.test(label);
+                if (isUnitCount) {
+                    if (!result.unitCount) result.unitCount = value;
+                } else if (label.indexOf('unit type') >= 0 || label.indexOf('unit types') >= 0 || label.indexOf('unitmix') >= 0 || label.indexOf('unit mix') >= 0) {
+                    // capture unit types / unit mix descriptions (e.g., "1BR: 10, 2BR: 20")
+                    if (!result.unitTypes) result.unitTypes = value;
+                }
             }
         });
+
+        // Also try to parse structured unit types from CSV rows where Title indicates unit types
+        try {
+            const unitMap = this.getUnitTypeMap(prop);
+            const parts: string[] = [];
+            const canonicalOrder = ['studio', '1br', '2br', '3br'];
+            // include only canonical keys (Studio, 1BR, 2BR, 3BR) — ignore other misc entries
+            canonicalOrder.forEach(k => {
+                if (unitMap[k]) parts.push(`${this.toTitleCase(k.replace(/br$/, 'BR'))}: ${unitMap[k]}`);
+            });
+
+            if (parts.length > 0) {
+                // prefer structured unitTypes over free-text unitTypes previously captured
+                result.unitTypes = parts.join('; ');
+
+                // If unitCount not present, try to sum numeric unit type values
+                if (!result.unitCount) {
+                    // sum only canonical unit types
+                    let sum = 0;
+                    let anyNumeric = false;
+                    canonicalOrder.forEach(k => {
+                        if (unitMap[k]) {
+                            const num = this.extractNumber(unitMap[k]);
+                            if (num !== null) {
+                                anyNumeric = true;
+                                sum += num;
+                            }
+                        }
+                    });
+                    if (anyNumeric) {
+                        result.unitCount = String(sum);
+                    }
+                }
+            }
+        } catch (e) {
+            // ignore parsing errors and keep existing unitTypes if any
+        }
         return result;
+    }
+
+    /**
+     * Parse rows where the CSV Title indicates unit types or unit mix for the given property
+     * and return a map from normalized unit label -> value (as string).
+     */
+    private getUnitTypeMap(prop: string): { [unitKey: string]: string } {
+        const map: { [unitKey: string]: string } = {};
+        const d = this.state.data;
+        if (!d || !d.rows || !d.headers) return map;
+
+        const requestedProp = String(prop || '').trim().toLowerCase();
+
+        // Helper: normalize a label into a canonical key
+        const normalizeLabel = (rawLabel: string): string => {
+            let key = (rawLabel || '').toLowerCase().replace(/\s+/g, '');
+            key = key.replace(/one/g, '1').replace(/two/g, '2').replace(/three/g, '3');
+            key = key.replace(/brs?$/i, 'br');
+            if (key.indexOf('studio') >= 0 || key === 'st') key = 'studio';
+            const m = key.match(/^(\d)br$/i);
+            if (m) key = `${m[1]}br`;
+            return key;
+        };
+
+        // Helper: parse strings like "Studio: 10, 1BR: 20" or "Studio - 10; 1BR - 20"
+        const parsePairsFromString = (s: string) => {
+            const out: { [k: string]: string } = {};
+            if (!s) return out;
+            // try to find pairs like "Label: Value" or "Label - Value"
+            const pairRegex = /([A-Za-z0-9\s]+?)\s*[:\-–—]\s*([^,;\n]+)/g;
+            let m: RegExpExecArray | null;
+            let found = false;
+            while ((m = pairRegex.exec(s)) !== null) {
+                found = true;
+                const lab = m[1].trim();
+                const val = m[2].trim();
+                const key = normalizeLabel(lab);
+                if (key) out[key] = val;
+            }
+
+            if (found) return out;
+
+            // fallback: split on commas/semicolons and try token pairs like "Studio 10" or "1BR 20"
+            const parts = s.split(/[;,]/).map(p => p.trim()).filter(Boolean);
+            parts.forEach(part => {
+                const m2 = part.match(/^([A-Za-z0-9\s]+)\s+(\d+[\d,().-]*)$/);
+                if (m2) {
+                    const lab = m2[1].trim();
+                    const val = m2[2].trim();
+                    const key = normalizeLabel(lab);
+                    if (key) out[key] = val;
+                }
+            });
+
+            return out;
+        };
+
+        // Collect candidate rows: either rows explicitly titled as unit types/mix OR property detail rows
+        const candidates = d.rows.filter(r => {
+            const title = String(r['Title'] || r['title'] || '').trim().toLowerCase();
+            const property = String(r['Property'] || r['property'] || '').trim().toLowerCase();
+            const isUnitTypesTitle = title.indexOf('unit type') >= 0 || title.indexOf('unit types') >= 0 || title.indexOf('unit mix') >= 0 || title.indexOf('unitmix') >= 0;
+            const isPropertyDetail = title.indexOf('property') >= 0 && (title.indexOf('detail') >= 0 || title.indexOf('data') >= 0);
+            return property === requestedProp && (isUnitTypesTitle || isPropertyDetail);
+        });
+
+        candidates.forEach(r => {
+            const rawLabel = String(r['Label'] || r['label'] || r['LabelName'] || '').trim();
+            const rawValue = String(r['Value'] || r['value'] || r['ValueData'] || r['Number'] || r['TextData'] || r['Text'] || '').trim();
+
+            // If this row has a label (e.g., 'Studio') and a value, use it
+            if (rawLabel && rawValue) {
+                const key = normalizeLabel(rawLabel);
+                if (key) {
+                    map[key] = rawValue;
+                    return;
+                }
+            }
+
+            // If value contains multiple pairs like 'Studio: 10; 1BR: 20', parse them
+            if (rawValue) {
+                const parsed = parsePairsFromString(rawValue);
+                Object.keys(parsed).forEach(k => {
+                    if (parsed[k]) map[k] = parsed[k];
+                });
+            }
+        });
+
+        return map;
+    }
+
+    /**
+     * Extract a numeric value from a free-text value string. Returns null when no numeric
+     * value can be found. Handles commas and parentheses.
+     */
+    private extractNumber(val: string): number | null {
+        if (!val) return null;
+        // Remove commas and parentheses and common non-digit symbols except dot and minus
+        const cleaned = val.replace(/\(|\)|,/g, '');
+        const m = cleaned.match(/-?\d+(?:\.\d+)?/);
+        if (!m) return null;
+        const num = Number(m[0]);
+        return isNaN(num) ? null : num;
     }
     constructor(props: ICSVReportViewerProps) {
         super(props);
@@ -320,10 +467,20 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             let headerHtml = '';
             if (this.state.selectedProperty) {
                 const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
+                const unitMap = this.getUnitTypeMap(this.state.selectedProperty as string);
                 const lines: string[] = [];
                 if (pd.name) lines.push(`<div><strong>Name:</strong> ${pd.name}</div>`);
                 if (pd.location) lines.push(`<div><strong>Location:</strong> ${pd.location}</div>`);
                 if (pd.unitCount) lines.push(`<div><strong>Unit Count:</strong> ${pd.unitCount}</div>`);
+                if (Object.keys(unitMap).length > 0) {
+                    // Build a small HTML table for unit types — only show canonical keys (Studio,1BR,2BR,3BR)
+                    const canonicalOrder = ['studio', '1br', '2br', '3br'];
+                    const ordered = canonicalOrder.filter(k => !!unitMap[k]);
+                    const rows = ordered.map(k => `<tr><td style="font-weight:600;padding:4px 8px;color:#09436b">${this.toTitleCase(k.replace(/br$/, 'BR'))}</td><td style="padding:4px 8px;color:#2b2b2b">${unitMap[k]}</td></tr>`).join('');
+                    if (rows.length > 0) {
+                        lines.push(`<div style="margin-top:6px;"><strong>Unit Types:</strong></div><table style="border-collapse:collapse;margin-top:6px;">${rows}</table>`);
+                    }
+                }
                 if (lines.length > 0) {
                     headerHtml = `<div style="margin-bottom:16px;"><h3 style='font-family:Arial,Helvetica,sans-serif;margin:0 0 8px 0;'>Property Data</h3>${lines.join('')}</div>`;
                 }
@@ -447,7 +604,9 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             // If a property is selected, render the Property Data block before charts
             if (this.state.selectedProperty) {
                 const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
-                if (pd && (pd.name || pd.location || pd.unitCount)) {
+                const unitMap = this.getUnitTypeMap(this.state.selectedProperty as string);
+                const hasAny = !!(pd && (pd.name || pd.location || pd.unitCount));
+                if (hasAny || Object.keys(unitMap).length > 0) {
                     // Title
                     pdf.setFontSize(12);
                     pdf.text('Property Data', pageWidth / 2, currentY, { align: 'center' });
@@ -455,10 +614,18 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
 
                     // Lines left-aligned
                     pdf.setFontSize(10);
-                    const lines = [];
-                    if (pd.name) lines.push(`Name: ${pd.name}`);
-                    if (pd.location) lines.push(`Location: ${pd.location}`);
-                    if (pd.unitCount) lines.push(`Unit Count: ${pd.unitCount}`);
+                    const lines: string[] = [];
+                    if (pd && pd.name) lines.push(`Name: ${pd.name}`);
+                    if (pd && pd.location) lines.push(`Location: ${pd.location}`);
+                    if (pd && pd.unitCount) lines.push(`Unit Count: ${pd.unitCount}`);
+
+                    if (Object.keys(unitMap).length > 0) {
+                        // Add each unit type as its own line for readability in PDF — only canonical keys
+                        const canonicalOrder = ['studio', '1br', '2br', '3br'];
+                        const ordered = canonicalOrder.filter(k => !!unitMap[k]);
+                        ordered.forEach(k => lines.push(`${this.toTitleCase(k.replace(/br$/, 'BR'))}: ${unitMap[k]}`));
+                    }
+
                     lines.forEach(line => {
                         if (currentY + 6 + margin > pageHeight) {
                             pdf.addPage();
@@ -674,15 +841,46 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                                 {this.state.selectedProperty && (
                                     (() => {
                                         const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
-                                        const hasAny = !!(pd.name || pd.location || pd.unitCount);
-                                        if (!hasAny) return null;
+                                        const unitMap = this.getUnitTypeMap(this.state.selectedProperty as string);
+                                        const hasAny = !!(pd.name || pd.location || pd.unitCount || (pd.unitTypes && pd.unitTypes.trim()));
+                                        if (!hasAny && Object.keys(unitMap).length === 0) return null;
                                         return (
                                             <div className={styles.propertyCard}>
-                                                <div className={styles.propertyCardHeader}>Property Data</div>
+                                                <div className={styles.propertyCardHeader}>
+                                                    <div className={styles.propertyCardHeaderLeft}>Property Data</div>
+                                                    {Object.keys(unitMap).length > 0 && (
+                                                        <div className={styles.propertyCardHeaderRight}>Unit Types</div>
+                                                    )}
+                                                </div>
                                                 <div className={styles.propertyCardBody}>
-                                                    {pd.name && <div><strong>Name:</strong> {pd.name}</div>}
-                                                    {pd.location && <div><strong>Location:</strong> {pd.location}</div>}
-                                                    {pd.unitCount && <div><strong>Unit Count:</strong> {pd.unitCount}</div>}
+                                                    <div className={styles.detailColumn}>
+                                                        {pd.name && <div className={styles.detailRow}><div className={styles.detailLabel}>Name:</div><div className={styles.detailValue}>{pd.name}</div></div>}
+                                                        {pd.location && <div className={styles.detailRow}><div className={styles.detailLabel}>Location:</div><div className={styles.detailValue}>{pd.location}</div></div>}
+                                                        {pd.unitCount && <div className={styles.detailRow}><div className={styles.detailLabel}>Unit Count:</div><div className={styles.detailValue}>{pd.unitCount}</div></div>}
+                                                        {/* fallback free-text unitTypes when no structured map */}
+                                                        {/* free-text Unit Types suppressed — only canonical types displayed */}
+                                                    </div>
+
+                                                    <div className={styles.unitTypesColumn}>
+                                                        {Object.keys(unitMap).length > 0 && (
+                                                            <div>
+                                                                <table className={styles.unitTypesTable}>
+                                                                    <tbody>
+                                                                        {(() => {
+                                                                            const canonicalOrder = ['studio', '1br', '2br', '3br'];
+                                                                            const ordered = canonicalOrder.filter(k => !!unitMap[k]);
+                                                                            return ordered.map((k) => (
+                                                                                <tr key={k}>
+                                                                                    <td className="label">{this.toTitleCase(k.replace(/br$/, 'BR'))}</td>
+                                                                                    <td className="value">{unitMap[k]}</td>
+                                                                                </tr>
+                                                                            ));
+                                                                        })()}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
