@@ -271,6 +271,35 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
         const num = Number(m[0]);
         return isNaN(num) ? null : num;
     }
+
+    /**
+     * Parse a filename in the form `MonthName_dd_YYYY.csv` and return epoch millis.
+     * Returns null if parsing fails.
+     */
+    private parseFilenameToDate(filename: string): number | null {
+        if (!filename) return null;
+        const name = filename.replace(/\.csv$/i, '').trim();
+        const parts = name.split('_').map(p => p.trim()).filter(Boolean);
+        if (parts.length < 3) return null;
+
+        const monthName = parts[0].toLowerCase();
+        const dayPart = parts[1].replace(/^0+/, '') || '1';
+        const yearPart = parts[2].replace(/[^0-9]/g, '');
+
+        const months: { [k: string]: number } = {
+            january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+            july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
+        };
+
+        const mi = months[monthName];
+        if (typeof mi === 'undefined') return null;
+        const day = parseInt(dayPart, 10);
+        const year = parseInt(yearPart, 10);
+        if (isNaN(day) || isNaN(year)) return null;
+
+        const d = new Date(year, mi, day);
+        return isNaN(d.getTime()) ? null : d.getTime();
+    }
     constructor(props: ICSVReportViewerProps) {
         super(props);
 
@@ -304,11 +333,19 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                 this.state.libraryName,
                 this.state.folderPath
             );
-            this.setState({ availableFiles: files, loading: false });
+
+            // Sort files by parsed date (format: MonthName_dd_YYYY.csv) in descending order
+            const sortedFiles = (files || []).slice().sort((a: string, b: string) => {
+                const da = this.parseFilenameToDate(a) ?? 0;
+                const db = this.parseFilenameToDate(b) ?? 0;
+                return db - da; // descending: newest first
+            });
+
+            this.setState({ availableFiles: sortedFiles, loading: false });
 
             // Auto-select first file if none selected and files exist
-            if ((!this.state.selectedFile || this.state.selectedFile === null) && files && files.length > 0) {
-                const first = files[0];
+            if ((!this.state.selectedFile || this.state.selectedFile === null) && sortedFiles && sortedFiles.length > 0) {
+                const first = sortedFiles[0];
                 // eslint-disable-next-line @typescript-eslint/no-floating-promises
                 this.loadCSVFile(first);
                 return;
@@ -316,6 +353,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
 
             // If a fileName was provided, load it automatically (fallback)
             if (this.state.fileName) {
+                // If a specific fileName was provided, prefer loading that (if present)
                 // eslint-disable-next-line @typescript-eslint/no-floating-promises
                 this.loadCSVFile(this.state.fileName);
             }
