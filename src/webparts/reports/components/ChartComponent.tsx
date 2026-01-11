@@ -32,7 +32,7 @@ export interface IChartComponentProps {
     data: CSVData;
     xAxis: string;
     yAxis: string;
-    chartType: 'bar' | 'line' | 'pie' | 'doughnut';
+    chartType: 'bar' | 'line' | 'pie' | 'doughnut' | 'horizontalBar';
     isDarkTheme?: boolean;
     chartTitle?: string;
     hideAxisNames?: boolean;
@@ -72,10 +72,13 @@ export default class ChartComponent extends React.Component<IChartComponentProps
         return { labels, values };
     }
 
-    private getChartOptions(): ChartOptions<any> {
+    private getChartOptions(isHorizontal?: boolean): ChartOptions<any> {
         const { isDarkTheme } = this.props;
         const hideAxis = !!this.props.hideAxisNames;
         const textColor = isDarkTheme ? '#ffffff' : '#333333';
+
+        const xTitle = isHorizontal ? this.props.yAxis : this.props.xAxis;
+        const yTitle = isHorizontal ? this.props.xAxis : this.props.yAxis;
 
         return {
             responsive: true,
@@ -98,7 +101,8 @@ export default class ChartComponent extends React.Component<IChartComponentProps
                     borderWidth: 1,
                     callbacks: {
                         label: (context: TooltipItem<any>) => {
-                            const value = context.parsed.y || context.parsed;
+                            const parsed: any = (context as any).parsed;
+                            const value = (typeof parsed === 'number') ? parsed : (parsed?.y ?? parsed?.x ?? parsed);
                             return `${this.props.yAxis}: ${typeof value === 'number' ? value.toFixed(2) : value}`;
                         }
                     }
@@ -114,7 +118,7 @@ export default class ChartComponent extends React.Component<IChartComponentProps
                     },
                     title: {
                         display: !hideAxis,
-                        text: this.props.xAxis,
+                        text: xTitle,
                         color: textColor,
                         font: {
                             size: 14,
@@ -131,7 +135,7 @@ export default class ChartComponent extends React.Component<IChartComponentProps
                     },
                     title: {
                         display: !hideAxis,
-                        text: this.props.yAxis,
+                        text: yTitle,
                         color: textColor,
                         font: {
                             size: 14,
@@ -197,7 +201,7 @@ export default class ChartComponent extends React.Component<IChartComponentProps
             ]
         };
 
-        const commonOptions = this.getChartOptions();
+        const commonOptions = this.getChartOptions(chartType === 'horizontalBar');
         const pieOptions = this.getPieChartOptions();
 
         return (
@@ -205,6 +209,9 @@ export default class ChartComponent extends React.Component<IChartComponentProps
                 <div className={styles.chartWrapper}>
                     {chartType === 'bar' && (
                         <Bar data={baseChartData} options={commonOptions} />
+                    )}
+                    {chartType === 'horizontalBar' && (
+                        <Bar data={baseChartData} options={{ ...commonOptions, indexAxis: 'y' as const }} />
                     )}
                     {chartType === 'line' && (
                         <Line data={baseChartData} options={commonOptions} />

@@ -31,9 +31,9 @@ interface ICSVReportViewerState {
     folderPath: string;
     fileName: string;
     selectedProperty: string | null;
-    perTitleChartTypes: { [title: string]: 'bar' | 'line' | 'pie' | 'doughnut' };
+    perTitleChartTypes: { [title: string]: 'bar' | 'line' | 'pie' | 'doughnut' | 'horizontalBar' };
     perTitleVisibility: { [title: string]: boolean };
-    chartType: 'bar' | 'line' | 'pie' | 'doughnut';
+    chartType: 'bar' | 'line' | 'pie' | 'doughnut' | 'horizontalBar';
 }
 
 export default class CSVReportViewer extends React.Component<ICSVReportViewerProps, ICSVReportViewerState> {
@@ -287,7 +287,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             selectedProperty: null,
             perTitleChartTypes: {},
             perTitleVisibility: {},
-            chartType: 'bar'
+            chartType: 'horizontalBar'
         };
     }
 
@@ -754,6 +754,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
 
         const chartTypeOptions: IDropdownOption[] = [
             { key: 'bar', text: 'Bar Chart' },
+            { key: 'horizontalBar', text: 'Horizontal Bar Chart' },
             { key: 'line', text: 'Line Chart' },
             { key: 'pie', text: 'Pie Chart' },
             { key: 'doughnut', text: 'Doughnut Chart' }
