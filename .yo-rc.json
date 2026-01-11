@@ -1,0 +1,19 @@
+{
+  "@microsoft/generator-sharepoint": {
+    "useGulp": false,
+    "plusBeta": false,
+    "isCreatingSolution": true,
+    "nodeVersion": "22.21.1",
+    "sdksVersions": {},
+    "version": "1.22.1",
+    "libraryName": "lcor-solutions",
+    "libraryId": "e861c84c-394a-4219-99bf-9202c9c0e1c0",
+    "environment": "spo",
+    "packageManager": "npm",
+    "solutionName": "lcor-solutions",
+    "solutionShortDescription": "lcor-solutions description",
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "componentType": "webpart"
+  }
+}

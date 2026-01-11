@@ -1,0 +1,155 @@
+.csvReportViewer {
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+
+  h2 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 20px 0;
+  }
+
+  h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 15px 0 10px 0;
+  }
+
+  .configSection {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+    background-color: #f5f5f5;
+
+    h3 {
+      margin-top: 0;
+    }
+  }
+
+  .spinnerContainer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px 20px;
+    text-align: center;
+  }
+
+  .selectionSection {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-radius: 4px;
+  }
+
+  .chartSection {
+    margin-top: 30px;
+    padding: 20px;
+    background-color: #fafafa;
+    border-radius: 4px;
+  }
+
+  .chartContainer {
+    margin: 30px 0;
+    padding: 20px;
+    background-color: white;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .multipleCharts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: space-between;
+  }
+
+  .singleChartWrapper {
+    flex: 1 1 48%;
+    box-sizing: border-box;
+    padding: 12px;
+    border: 1px solid #f0f0f0;
+    border-radius: 4px;
+    background: #fff;
+    min-width: 280px;
+  }
+
+  .singleChartHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .singleChartTitle {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .singleChartControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .dataTableSection {
+    margin-top: 30px;
+
+    h3 {
+      margin-bottom: 15px;
+    }
+  }
+
+  .tableWrapper {
+    overflow-x: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+  }
+
+  .dataTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    thead {
+      background-color: #f5f5f5;
+      border-bottom: 2px solid #0078d4;
+
+      th {
+        padding: 12px;
+        text-align: left;
+        font-weight: 600;
+        color: #333333;
+      }
+    }
+
+    tbody {
+      tr {
+        border-bottom: 1px solid #e0e0e0;
+
+        &:hover {
+          background-color: #f9f9f9;
+        }
+
+        &:last-child {
+          border-bottom: none;
+        }
+
+        td {
+          padding: 10px 12px;
+          color: #424242;
+        }
+      }
+    }
+
+    .moreRows {
+      text-align: center;
+      font-weight: 600;
+      color: #0078d4;
+      padding: 15px !important;
+    }
+  }
+}

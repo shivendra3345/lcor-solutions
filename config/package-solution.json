@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "lcor-solutions-client-side-solution",
+    "id": "e861c84c-394a-4219-99bf-9202c9c0e1c0",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.22.1"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "lcor-solutions description"
+      },
+      "longDescription": {
+        "default": "lcor-solutions description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "lcor-solutions Feature",
+        "description": "The feature that activates elements of the lcor-solutions solution.",
+        "id": "ba9cc786-309e-4f40-afcf-2a159235ec48",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/lcor-solutions.sppkg"
+  }
+}
