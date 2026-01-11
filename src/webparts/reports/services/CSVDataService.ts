@@ -201,9 +201,9 @@ export class CSVDataService {
 
             // Parse headers (first line)
             const rawHeaders = this.parseCSVLine(lines[0]);
-
-            // Enforce expected header names and order
-            const expectedHeaders = ['Property', 'Title', 'Label', 'Value', 'TextData', 'ExportDate'];
+            // Define the canonical header sets we expect (base and optional ExportDate)
+            const baseHeaders = ['Property', 'Title', 'Label', 'Value', 'TextData'];
+            const expectedHeaders = baseHeaders.concat(['ExportDate']);
 
             // Create mapping from expected header -> index in rawHeaders (case-insensitive match)
             const indexMap: number[] = expectedHeaders.map(h => {
@@ -211,28 +211,44 @@ export class CSVDataService {
                 return found >= 0 ? found : -1;
             });
 
-            // If there are no direct name matches but counts are equal, assume positional mapping
-            const headers = (() => {
-                const anyMatched = indexMap.some(i => i >= 0);
-                if (!anyMatched && rawHeaders.length === expectedHeaders.length) {
-                    // Positional mapping
-                    for (let i = 0; i < expectedHeaders.length; i++) {
-                        indexMap[i] = i;
-                    }
-                    console.log('CSV headers did not match expected names; using positional mapping to', expectedHeaders);
-                    return expectedHeaders.slice();
+            // Determine whether the first line is a header row by checking for any header-name matches
+            const anyMatched = indexMap.some(i => i >= 0);
+
+            let headers: string[] = [];
+            let dataStartIndex = 1; // default: data starts on line 1 (second line)
+
+            if (!anyMatched) {
+                // No header names matched; assume header-less CSV where columns are positional
+                // Choose header list length to match the number of columns present on the first line
+                if (rawHeaders.length === baseHeaders.length) {
+                    headers = baseHeaders.slice();
+                } else if (rawHeaders.length >= expectedHeaders.length) {
+                    headers = expectedHeaders.slice();
+                } else if (rawHeaders.length < baseHeaders.length && rawHeaders.length > 0) {
+                    // Fewer columns than baseHeaders: map as many base headers as available
+                    headers = baseHeaders.slice(0, rawHeaders.length);
+                } else {
+                    // Fallback to baseHeaders
+                    headers = baseHeaders.slice();
                 }
 
-                // Build resulting headers array: use expectedHeaders but allow existing names if present
-                const result: string[] = expectedHeaders.slice();
-                // If rawHeaders contains unexpected extra headers, we ignore them
+                // Positional mapping: the nth header maps to index n
+                for (let i = 0; i < headers.length; i++) {
+                    indexMap[i] = i;
+                }
+
+                // Include the first line as data (since it was not a header)
+                dataStartIndex = 0;
+                console.log('No header row detected; using positional mapping to', headers);
+            } else {
+                // At least one header matched: use expectedHeaders as the canonical header names
+                headers = expectedHeaders.slice();
                 console.log('CSV header mapping:', expectedHeaders.map((h, idx) => ({ expected: h, index: indexMap[idx], raw: indexMap[idx] >= 0 ? rawHeaders[indexMap[idx]] : null })));
-                return result;
-            })();
+            }
 
             // Parse data rows
             const rows: CSVRow[] = [];
-            for (let i = 1; i < lines.length; i++) {
+            for (let i = dataStartIndex; i < lines.length; i++) {
                 const values = this.parseCSVLine(lines[i]);
 
                 // Skip empty lines
@@ -240,11 +256,11 @@ export class CSVDataService {
                     continue;
                 }
 
-                // Create row object following expected header order
+                // Create row object following resolved header order
                 const row: CSVRow = {};
                 for (let j = 0; j < headers.length; j++) {
                     const srcIdx = indexMap[j];
-                    const value = (srcIdx >= 0 ? values[srcIdx] : '') || '';
+                    const value = (srcIdx >= 0 && srcIdx < values.length ? values[srcIdx] : '') || '';
                     // Try to convert to number if possible
                     row[headers[j]] = isNaN(Number(value)) ? value : Number(value);
                 }

@@ -16,7 +16,10 @@ export default class Reports extends React.Component<IReportsProps> {
 
     return (
       <section className={`${styles.reports} ${hasTeamsContext ? styles.teams : ''}`}>
-        {/* CSV Report Viewer Component */}
+        {/* Page Heading (configurable) */}
+        <h1>{this.props.reportTitle || 'LCOR Demographics Report'}</h1>
+
+        {/* CSV Report Viewer Component (subheading inside viewer) */}
         <CSVReportViewer
           libraryName={this.props['libraryName'] || 'Shared Documents'}
           folderPath={this.props['folderPath'] || 'Reports'}
@@ -25,6 +28,7 @@ export default class Reports extends React.Component<IReportsProps> {
           // pass per-chart settings from web part
           chartVisibilities={this.props.chartVisibilities}
           hideAxisNames={this.props.hideAxisNames}
+          chartLabels={this.props.chartLabels}
           context={this.props.context}
         />
 

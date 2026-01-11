@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Spinner, SpinnerSize, MessageBar, MessageBarType, Dropdown, IDropdownOption, TextField, PrimaryButton, DefaultButton, Stack, StackItem, Toggle, Pivot, PivotItem } from '@fluentui/react';
+import { Spinner, SpinnerSize, MessageBar, MessageBarType, Dropdown, IDropdownOption, TextField, PrimaryButton, DefaultButton, Stack, StackItem, Pivot, PivotItem } from '@fluentui/react';
 import styles from './CSVReportViewer.module.scss';
 import { CSVDataService, CSVData, CSVRow } from '../services/CSVDataService';
 
@@ -15,6 +15,8 @@ export interface ICSVReportViewerProps {
     chartVisibilities?: { [title: string]: boolean };
     // from web part: per-chart hide axis names map (title -> boolean)
     hideAxisNames?: { [title: string]: boolean };
+    // from web part: per-chart labels (sanitized key -> label)
+    chartLabels?: { [title: string]: string };
     // optional SPFx context passed from web part
     context?: any;
 }
@@ -28,11 +30,8 @@ interface ICSVReportViewerState {
     libraryName: string;
     folderPath: string;
     fileName: string;
-    selectedXAxis: string | null;
-    selectedYAxis: string | null;
     selectedProperty: string | null;
     perTitleChartTypes: { [title: string]: 'bar' | 'line' | 'pie' | 'doughnut' };
-    perTitleLabels: { [title: string]: string };
     perTitleVisibility: { [title: string]: boolean };
     chartType: 'bar' | 'line' | 'pie' | 'doughnut';
 }
@@ -40,6 +39,90 @@ interface ICSVReportViewerState {
 export default class CSVReportViewer extends React.Component<ICSVReportViewerProps, ICSVReportViewerState> {
     private sanitizeTitleKey(title: string): string {
         return String(title).replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
+    private getLabelForTitle(title: string): string {
+        const key = this.sanitizeTitleKey(title);
+        if (this.props.chartLabels && typeof this.props.chartLabels[key] === 'string' && this.props.chartLabels[key].trim().length > 0) {
+            return this.props.chartLabels[key];
+        }
+        return title;
+    }
+
+    private getPropertyDetails(prop: string): Array<{ label: string; value: string }> {
+        const result: Array<{ label: string; value: string }> = [];
+        const d = this.state.data;
+        if (!d || !d.rows || !d.headers) return result;
+
+        // Normalize requested property
+        const requestedProp = String(prop || '').trim();
+
+        const detailsRows = d.rows.filter(r => {
+            const title = String(r['Title'] || r['title'] || '').trim().toLowerCase();
+            const property = String(r['Property'] || r['property'] || '').trim();
+            // Consider header-less or varied casing: check includes 'property' and either 'detail' or 'data'
+            const isDetail = title === 'property details'
+                || title === 'property detail'
+                || title === 'property data'
+                || (title.indexOf('property') >= 0 && (title.indexOf('detail') >= 0 || title.indexOf('data') >= 0));
+            return isDetail && property === requestedProp;
+        });
+
+        // Preserve the order of rows as they appear in the CSV for display.
+        detailsRows.forEach(r => {
+            const rawLabel = String(r['Label'] || r['label'] || r['LabelName'] || r['labelName'] || '').trim();
+            const normalizedLabel = rawLabel || String(r['Label'] || r['label'] || '').trim();
+            const textData = String(r['TextData'] || r['Text'] || r['text'] || '').trim();
+            const valueData = String(r['Value'] || r['ValueData'] || r['Number'] || r['value'] || '').trim();
+
+            const value = textData || valueData || '';
+            const labelForDisplay = normalizedLabel ? normalizedLabel.replace(/\s+/g, ' ').trim() : '';
+            if (labelForDisplay && value) {
+                result.push({ label: this.toTitleCase(labelForDisplay), value });
+            } else if (value) {
+                // Fallback label when none provided — use 'Value'
+                result.push({ label: 'Value', value });
+            }
+        });
+
+        return result;
+    }
+
+    private toTitleCase(str: string): string {
+        return str.split(' ').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+    }
+
+    private pickPropertyFields(details: Array<{ label: string; value: string }>, wanted: string[]): Array<{ label: string; value: string }> {
+        if (!details || details.length === 0) return [];
+        const map = new Map<string, { label: string; value: string }>();
+        details.forEach(d => {
+            map.set(d.label.toLowerCase(), d);
+        });
+        const result: Array<{ label: string; value: string }> = [];
+        wanted.forEach(w => {
+            const found = map.get(w.toLowerCase());
+            if (found) result.push(found);
+        });
+        return result;
+    }
+
+    private getSimplePropertyDetails(prop: string): { name?: string; location?: string; unitCount?: string } {
+        const details = this.getPropertyDetails(prop);
+        const result: { name?: string; location?: string; unitCount?: string } = {};
+        if (!details || details.length === 0) return result;
+        details.forEach(d => {
+            const label = (d.label || '').toLowerCase();
+            const value = d.value || '';
+            if (!value) return;
+            if (label === 'name' || label.indexOf('name') >= 0) {
+                if (!result.name) result.name = value;
+            } else if (label === 'location' || label.indexOf('location') >= 0) {
+                if (!result.location) result.location = value;
+            } else if (label === 'unit count' || label === 'unitcount' || label.indexOf('unit') >= 0) {
+                if (!result.unitCount) result.unitCount = value;
+            }
+        });
+        return result;
     }
     constructor(props: ICSVReportViewerProps) {
         super(props);
@@ -53,11 +136,9 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             libraryName: props.libraryName,
             folderPath: props.folderPath || '',
             fileName: props.fileName || '',
-            selectedXAxis: null,
-            selectedYAxis: null,
+
             selectedProperty: null,
             perTitleChartTypes: {},
-            perTitleLabels: {},
             perTitleVisibility: {},
             chartType: 'bar'
         };
@@ -78,9 +159,18 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             );
             this.setState({ availableFiles: files, loading: false });
 
-            // If a fileName was provided, load it automatically
+            // Auto-select first file if none selected and files exist
+            if ((!this.state.selectedFile || this.state.selectedFile === null) && files && files.length > 0) {
+                const first = files[0];
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                this.loadCSVFile(first);
+                return;
+            }
+
+            // If a fileName was provided, load it automatically (fallback)
             if (this.state.fileName) {
-                await this.loadCSVFile(this.state.fileName);
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                this.loadCSVFile(this.state.fileName);
             }
         } catch (error) {
             this.setState({
@@ -114,9 +204,18 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             this.setState({
                 data: csvData,
                 loading: false,
-                selectedXAxis: xAxis,
-                selectedYAxis: yAxis
+
             });
+
+            // Auto-select first property when data is loaded and none selected
+            try {
+                const props = Array.from(new Set(csvData.rows.map(r => String(r['Property'] || '').trim()))).filter(p => p);
+                if ((!this.state.selectedProperty || this.state.selectedProperty === null) && props.length > 0) {
+                    this.setState({ selectedProperty: props[0] });
+                }
+            } catch (e) {
+                // ignore
+            }
 
             // initialize per-title visibility from webpart props if provided
             try {
@@ -158,17 +257,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
         this.setState({ folderPath: newValue || '' });
     };
 
-    private handleXAxisChange = (_event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption): void => {
-        if (option) {
-            this.setState({ selectedXAxis: option.key as string });
-        }
-    };
 
-    private handleYAxisChange = (_event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption): void => {
-        if (option) {
-            this.setState({ selectedYAxis: option.key as string });
-        }
-    };
 
     private handlePropertyChange = (_event: React.FormEvent<HTMLDivElement>, option?: IDropdownOption): void => {
         if (option) {
@@ -195,12 +284,6 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
         }));
     };
 
-    private handlePerTitleLabelChange = (title: string, _event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>, newValue?: string): void => {
-        this.setState(prev => ({
-            perTitleLabels: { ...prev.perTitleLabels, [title]: newValue || '' }
-        }));
-    };
-
     private handlePrintAll = (): void => {
         try {
             const container = document.querySelector(`.${styles.chartContainer}`) as HTMLElement | null;
@@ -224,17 +307,29 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             }
 
             const parts: string[] = [];
-
             visibleWrappers.forEach((wrapper) => {
                 const c = wrapper.querySelector('canvas') as HTMLCanvasElement | null;
                 if (!c) return;
-                const titleEl = wrapper.querySelector('h4');
-                const title = titleEl && titleEl.textContent ? titleEl.textContent.trim() : (wrapper.getAttribute('data-title') || '');
+                const rawTitle = wrapper.getAttribute('data-title') || '';
+                const title = this.getLabelForTitle(rawTitle);
                 const dataUrl = c.toDataURL('image/png');
                 parts.push(`<div style="page-break-inside:avoid;margin-bottom:24px;"><h2 style='font-family:Arial,Helvetica,sans-serif;'>${title || ''}</h2><img src='${dataUrl}' style='max-width:100%;height:auto;' /></div>`);
             });
 
-            const html = `<!doctype html><html><head><meta charset='utf-8'><title>Charts</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:16px} img{display:block;margin:8px 0} @media print { img{max-width:100%} }</style></head><body>${parts.join('')}</body></html>`;
+            // If a property is selected, include Property Data block before charts
+            let headerHtml = '';
+            if (this.state.selectedProperty) {
+                const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
+                const lines: string[] = [];
+                if (pd.name) lines.push(`<div><strong>Name:</strong> ${pd.name}</div>`);
+                if (pd.location) lines.push(`<div><strong>Location:</strong> ${pd.location}</div>`);
+                if (pd.unitCount) lines.push(`<div><strong>Unit Count:</strong> ${pd.unitCount}</div>`);
+                if (lines.length > 0) {
+                    headerHtml = `<div style="margin-bottom:16px;"><h3 style='font-family:Arial,Helvetica,sans-serif;margin:0 0 8px 0;'>Property Data</h3>${lines.join('')}</div>`;
+                }
+            }
+
+            const html = `<!doctype html><html><head><meta charset='utf-8'><title>Charts</title><style>body{font-family:Arial,Helvetica,sans-serif;padding:16px} img{display:block;margin:8px 0} @media print { img{max-width:100%} }</style></head><body>${headerHtml}${parts.join('')}</body></html>`;
 
             const printWindow = window.open('', '_blank');
             if (!printWindow) {
@@ -276,8 +371,14 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                 return true;
             });
 
-            const canvases: HTMLCanvasElement[] = visibleWrappers.map(w => w.querySelector('canvas')).filter(Boolean) as HTMLCanvasElement[];
-            if (canvases.length === 0) {
+            const items: Array<{ canvas: HTMLCanvasElement; title: string }> = visibleWrappers.map(w => {
+                const c = w.querySelector('canvas') as HTMLCanvasElement | null;
+                const rawTitle = w.getAttribute('data-title') || '';
+                const title = this.getLabelForTitle(rawTitle);
+                return c ? { canvas: c, title } : null;
+            }).filter(Boolean) as Array<{ canvas: HTMLCanvasElement; title: string }>;
+
+            if (items.length === 0) {
                 this.setState({ error: 'No chart canvases found to export' });
                 return;
             }
@@ -343,8 +444,40 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
 
             let currentY = 14 + 6; // start below heading
 
-            for (let i = 0; i < canvases.length; i += 2) {
-                const c1 = canvases[i];
+            // If a property is selected, render the Property Data block before charts
+            if (this.state.selectedProperty) {
+                const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
+                if (pd && (pd.name || pd.location || pd.unitCount)) {
+                    // Title
+                    pdf.setFontSize(12);
+                    pdf.text('Property Data', pageWidth / 2, currentY, { align: 'center' });
+                    currentY += 6;
+
+                    // Lines left-aligned
+                    pdf.setFontSize(10);
+                    const lines = [];
+                    if (pd.name) lines.push(`Name: ${pd.name}`);
+                    if (pd.location) lines.push(`Location: ${pd.location}`);
+                    if (pd.unitCount) lines.push(`Unit Count: ${pd.unitCount}`);
+                    lines.forEach(line => {
+                        if (currentY + 6 + margin > pageHeight) {
+                            pdf.addPage();
+                            pdf.setFontSize(16);
+                            pdf.text(headingText, pageWidth / 2, 14, { align: 'center' });
+                            currentY = 14 + 6;
+                        }
+                        pdf.text(line, margin, currentY);
+                        currentY += 6;
+                    });
+
+                    // Add a small gap before charts
+                    currentY += 4;
+                }
+            }
+
+            for (let i = 0; i < items.length; i += 2) {
+                const item1 = items[i];
+                const c1 = item1.canvas;
                 const imgData1 = c1.toDataURL('image/png');
 
                 const img1 = new Image();
@@ -357,12 +490,15 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                 const ratio1 = img1.width && img1.height ? img1.width / img1.height : 1;
                 const h1 = colWidth / ratio1;
 
+                const title1 = item1.title || '';
+
                 let img2: HTMLImageElement | null = null;
                 let h2 = 0;
                 let imgData2: string | null = null;
 
-                if (i + 1 < canvases.length) {
-                    const c2 = canvases[i + 1];
+                if (i + 1 < items.length) {
+                    const item2 = items[i + 1];
+                    const c2 = item2.canvas;
                     imgData2 = c2.toDataURL('image/png');
                     img2 = new Image();
                     await new Promise<void>((resolve) => {
@@ -374,7 +510,8 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                     h2 = colWidth / ratio2;
                 }
 
-                const rowHeight = Math.max(h1, h2 || 0);
+                const titleHeight = 6; // mm for title text
+                const rowHeight = Math.max(h1 + titleHeight, h2 ? (h2 + titleHeight) : 0);
 
                 // If this row doesn't fit, create a new page
                 if (currentY + rowHeight + margin > pageHeight) {
@@ -385,16 +522,21 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                     currentY = 14 + 6;
                 }
 
-                // Draw first image (left column)
+                // Draw first image (left column) with title
                 const x1 = margin;
                 const y1 = currentY;
-                pdf.addImage(imgData1, 'PNG', x1, y1, colWidth, h1);
+                pdf.setFontSize(12);
+                pdf.text(String(title1), x1, y1 + 4);
+                pdf.addImage(imgData1, 'PNG', x1, y1 + 6, colWidth, h1);
 
                 // Draw second image (right column) if present
                 if (imgData2 && img2) {
+                    const title2 = items[i + 1].title || '';
                     const x2 = margin + colWidth + gap;
                     const y2 = currentY;
-                    pdf.addImage(imgData2, 'PNG', x2, y2, colWidth, h2);
+                    pdf.setFontSize(12);
+                    pdf.text(String(title2), x2, y2 + 4);
+                    pdf.addImage(imgData2, 'PNG', x2, y2 + 6, colWidth, h2);
                 }
 
                 currentY += rowHeight + gap;
@@ -431,8 +573,6 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             selectedFile,
             libraryName,
             folderPath,
-            selectedXAxis,
-            selectedYAxis,
             chartType
         } = this.state;
 
@@ -440,13 +580,6 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
             key: file,
             text: file
         }));
-
-        const columnOptions: IDropdownOption[] = data
-            ? data.headers.map(header => ({
-                key: header,
-                text: header
-            }))
-            : [];
 
         const propertyOptions: IDropdownOption[] = data
             ? Array.from(new Set(data.rows.map(r => String(r['Property'] || '').trim()))).filter(p => p).map(p => ({ key: p, text: p }))
@@ -480,83 +613,81 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                 {/* Tabs */}
                 <Pivot aria-label="Report tabs">
                     <PivotItem headerText="Select & Charts" itemKey="select">
-                        {/* File Selection */}
-                        {!loading && availableFiles.length > 0 && (
-                            <div className={styles.selectionSection}>
-                                <Dropdown
-                                    label="Select CSV File"
-                                    options={fileOptions}
-                                    selectedKey={selectedFile}
-                                    onChange={this.handleFileChange}
-                                    placeholder="Choose a CSV file"
-                                />
-                            </div>
-                        )}
+                        {/* Top row: File, Property, Chart Type */}
+                        <div className={styles.selectionSection}>
+                            <Stack horizontal tokens={{ childrenGap: 12 }} wrap verticalAlign="end">
+                                <StackItem grow styles={{ root: { minWidth: 220 } }}>
+                                    <Dropdown
+                                        label="Select CSV File"
+                                        options={fileOptions}
+                                        selectedKey={selectedFile}
+                                        onChange={this.handleFileChange}
+                                        placeholder="Choose a CSV file"
+                                    />
+                                </StackItem>
 
-                        {/* Chart Configuration and Display */}
+                                <StackItem grow styles={{ root: { minWidth: 200 } }}>
+                                    <Dropdown
+                                        label="Property"
+                                        options={propertyOptions}
+                                        selectedKey={this.state.selectedProperty}
+                                        onChange={this.handlePropertyChange}
+                                        placeholder="Select property to group by"
+                                    />
+                                </StackItem>
+
+                                <StackItem styles={{ root: { minWidth: 160 } }}>
+                                    <Dropdown
+                                        label="Chart Type"
+                                        options={chartTypeOptions}
+                                        selectedKey={chartType}
+                                        onChange={this.handleChartTypeChange}
+                                    />
+                                </StackItem>
+                            </Stack>
+                        </div>
+
+                        {/* Chart Configuration header + actions */}
                         {data && data.rows.length > 0 && (
                             <div className={styles.chartSection}>
-                                <h3>Chart Configuration</h3>
-                                <Stack tokens={{ childrenGap: 15 }}>
+                                <Stack horizontal tokens={{ childrenGap: 12 }} verticalAlign="center" styles={{ root: { justifyContent: 'space-between' } }}>
                                     <StackItem>
-                                        <Stack horizontal tokens={{ childrenGap: 15 }}>
-                                            <StackItem grow>
-                                                <Dropdown
-                                                    label="X-Axis Column"
-                                                    options={columnOptions}
-                                                    selectedKey={selectedXAxis}
-                                                    onChange={this.handleXAxisChange}
-                                                />
-                                            </StackItem>
-                                            <StackItem grow>
-                                                <Dropdown
-                                                    label="Y-Axis Column"
-                                                    options={columnOptions}
-                                                    selectedKey={selectedYAxis}
-                                                    onChange={this.handleYAxisChange}
-                                                />
-                                            </StackItem>
-                                            <StackItem grow>
-                                                <Dropdown
-                                                    label="Property"
-                                                    options={propertyOptions}
-                                                    selectedKey={this.state.selectedProperty}
-                                                    onChange={this.handlePropertyChange}
-                                                    placeholder="Select property to group by"
-                                                />
-                                            </StackItem>
-                                            <StackItem grow>
-                                                <Dropdown
-                                                    label="Chart Type"
-                                                    options={chartTypeOptions}
-                                                    selectedKey={chartType}
-                                                    onChange={this.handleChartTypeChange}
-                                                />
-                                            </StackItem>
+                                        <h3 style={{ margin: 0 }}>Chart Configuration</h3>
+                                    </StackItem>
+                                    <StackItem>
+                                        <Stack horizontal tokens={{ childrenGap: 8 }}>
+                                            <PrimaryButton
+                                                text="Download PDF"
+                                                onClick={() => void this.handleDownloadPDF()}
+                                                disabled={loading || !data}
+                                            />
+                                            <DefaultButton
+                                                text="Print All Charts"
+                                                onClick={() => this.handlePrintAll()}
+                                                disabled={loading || !data}
+                                            />
                                         </Stack>
                                     </StackItem>
                                 </Stack>
 
-                                <Stack tokens={{ childrenGap: 10 }}>
-                                    <StackItem>
-                                        <Stack horizontal tokens={{ childrenGap: 10 }}>
-                                            <StackItem>
-                                                <PrimaryButton
-                                                    text="Download PDF"
-                                                    onClick={() => void this.handleDownloadPDF()}
-                                                    disabled={loading || !data}
-                                                />
-                                            </StackItem>
-                                            <StackItem>
-                                                <DefaultButton
-                                                    text="Print All Charts"
-                                                    onClick={() => this.handlePrintAll()}
-                                                    disabled={loading || !data}
-                                                />
-                                            </StackItem>
-                                        </Stack>
-                                    </StackItem>
-                                </Stack>
+                                {/* Property Data: card-style summary */}
+                                {this.state.selectedProperty && (
+                                    (() => {
+                                        const pd = this.getSimplePropertyDetails(this.state.selectedProperty as string);
+                                        const hasAny = !!(pd.name || pd.location || pd.unitCount);
+                                        if (!hasAny) return null;
+                                        return (
+                                            <div className={styles.propertyCard}>
+                                                <div className={styles.propertyCardHeader}>Property Data</div>
+                                                <div className={styles.propertyCardBody}>
+                                                    {pd.name && <div><strong>Name:</strong> {pd.name}</div>}
+                                                    {pd.location && <div><strong>Location:</strong> {pd.location}</div>}
+                                                    {pd.unitCount && <div><strong>Unit Count:</strong> {pd.unitCount}</div>}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()
+                                )}
 
                                 <div className={styles.chartContainer}>
                                     {/* existing chart rendering logic copied here */}
@@ -589,39 +720,29 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
 
                                                         const xAxisToUse = hasLabel
                                                             ? data.headers[headerLower.indexOf('label')]
-                                                            : (selectedXAxis || data.headers[0] || '');
+                                                            : (data.headers[0] || '');
 
                                                         const yAxisToUse = hasValue
                                                             ? data.headers[headerLower.indexOf('value')]
-                                                            : (selectedYAxis || data.headers[1] || data.headers[0] || '');
+                                                            : (data.headers[1] || data.headers[0] || '');
 
                                                         const perTitleType = this.state.perTitleChartTypes[title] || chartType;
-                                                        const perTitleLabel = this.state.perTitleLabels[title] || title;
+
+                                                        // Use sanitized key to look up label overrides in web part properties
+                                                        const labelFromProps = this.props.chartLabels && typeof this.props.chartLabels[key] === 'string' && this.props.chartLabels[key].trim().length > 0
+                                                            ? this.props.chartLabels[key]
+                                                            : title;
 
                                                         return (
                                                             <div key={idx} className={(styles as any).singleChartWrapper} data-title={title}>
                                                                 <div className={(styles as any).singleChartHeader}>
-                                                                    <h4 className={(styles as any).singleChartTitle}>{perTitleLabel}</h4>
+                                                                    <div className={(styles as any).singleChartTitle}>{labelFromProps}</div>
                                                                     <div className={(styles as any).singleChartControls}>
                                                                         <Dropdown
                                                                             options={chartTypeOptions}
                                                                             selectedKey={perTitleType}
                                                                             onChange={(e, opt) => this.handlePerTitleChartTypeChange(title, e, opt)}
                                                                             styles={{ root: { width: 140 } }}
-                                                                        />
-                                                                        <TextField
-                                                                            value={perTitleLabel}
-                                                                            onChange={(e, v) => this.handlePerTitleLabelChange(title, e, v)}
-                                                                            placeholder="Chart label"
-                                                                            styles={{ root: { width: 220, marginLeft: 8 } }}
-                                                                        />
-                                                                        <Toggle
-                                                                            label="Show"
-                                                                            onText="On"
-                                                                            offText="Off"
-                                                                            checked={this.state.perTitleVisibility ? !!this.state.perTitleVisibility[title] : true}
-                                                                            onChange={(_e, checked) => this.handlePerTitleVisibilityChange(title, checked)}
-                                                                            styles={{ root: { marginLeft: 8 } }}
                                                                         />
                                                                     </div>
                                                                 </div>
@@ -631,7 +752,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                                                                         xAxis={xAxisToUse}
                                                                         yAxis={yAxisToUse}
                                                                         chartType={perTitleType}
-                                                                        chartTitle={perTitleLabel}
+                                                                        chartTitle={labelFromProps}
                                                                         isDarkTheme={this.props.isDarkTheme}
                                                                         hideAxisNames={this.props.hideAxisNames ? !!this.props.hideAxisNames[key] : false}
                                                                     />
@@ -643,17 +764,7 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
                                             );
                                         })()
                                     ) : (
-                                        selectedXAxis && selectedYAxis && (
-                                            <React.Suspense fallback={<Spinner size={SpinnerSize.large} label="Loading chart..." />}>
-                                                <ChartComponent
-                                                    data={data}
-                                                    xAxis={selectedXAxis}
-                                                    yAxis={selectedYAxis}
-                                                    chartType={chartType}
-                                                    isDarkTheme={this.props.isDarkTheme}
-                                                />
-                                            </React.Suspense>
-                                        )
+                                        <MessageBar messageBarType={MessageBarType.info}>Select a Property to view per-Title charts.</MessageBar>
                                     )}
                                 </div>
                             </div>

@@ -202,9 +202,6 @@ export default class ChartComponent extends React.Component<IChartComponentProps
 
         return (
             <div className={styles.chartComponent}>
-                <div className={styles.chartTitle}>
-                    {this.props.chartTitle ? this.props.chartTitle : `${yAxis} by ${xAxis}`}
-                </div>
                 <div className={styles.chartWrapper}>
                     {chartType === 'bar' && (
                         <Bar data={baseChartData} options={commonOptions} />

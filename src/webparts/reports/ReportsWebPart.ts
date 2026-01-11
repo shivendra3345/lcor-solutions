@@ -22,6 +22,8 @@ export interface IReportsWebPartProps {
   fileName?: string;
   chartVisibilities?: { [title: string]: boolean };
   hideAxisNames?: { [title: string]: boolean };
+  chartLabels?: { [title: string]: string };
+  reportTitle?: string;
 }
 
 export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPartProps> {
@@ -45,6 +47,9 @@ export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPar
         fileName: this.properties.fileName,
         chartVisibilities: this.properties.chartVisibilities,
         hideAxisNames: this.properties.hideAxisNames
+        ,
+        chartLabels: this.properties.chartLabels,
+        reportTitle: this.properties.reportTitle
       }
     );
 
@@ -140,6 +145,10 @@ export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPar
                 PropertyPaneTextField('fileName', {
                   label: 'CSV file name (e.g., data.csv)'
                 }),
+                PropertyPaneTextField('reportTitle', {
+                  label: 'Report title',
+                  placeholder: 'LCOR Demographics Report'
+                }),
                 PropertyPaneButton('refreshTitles', {
                   text: 'Refresh Titles',
                   buttonType: 0,
@@ -233,6 +242,14 @@ export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPar
             offText: 'No'
           })
         );
+
+        // Add a property pane text field for an optional chart label (stored by sanitized key)
+        this._dynamicToggleFields.push(
+          PropertyPaneTextField(`chartLabels.${key}`, {
+            label: `${displayLabel} - Label (optional)`,
+            placeholder: 'Optional chart title'
+          })
+        );
       });
     } catch (e) {
       console.warn('Could not build property pane dynamic fields', e);
@@ -258,6 +275,14 @@ export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPar
               label: `${displayLabel} - Hide axis names`,
               onText: 'Yes',
               offText: 'No'
+            })
+          );
+
+          // label field for persisted keys
+          this._dynamicToggleFields.push(
+            PropertyPaneTextField(`chartLabels.${key}`, {
+              label: `${displayLabel} - Label (optional)`,
+              placeholder: 'Optional chart title'
             })
           );
         });
@@ -289,6 +314,14 @@ export default class ReportsWebPart extends BaseClientSideWebPart<IReportsWebPar
       const key = propertyPath.replace('hideAxisNames.', '');
       this.properties.hideAxisNames = this.properties.hideAxisNames || {};
       this.properties.hideAxisNames[key] = !!newValue;
+      this.render();
+      return;
+    }
+
+    if (propertyPath && propertyPath.indexOf('chartLabels.') === 0) {
+      const key = propertyPath.replace('chartLabels.', '');
+      this.properties.chartLabels = this.properties.chartLabels || {};
+      this.properties.chartLabels[key] = newValue || '';
       this.render();
       return;
     }
