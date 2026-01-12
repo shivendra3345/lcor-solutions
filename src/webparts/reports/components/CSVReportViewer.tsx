@@ -6,6 +6,41 @@ import { CSVDataService, CSVData, CSVRow } from '../services/CSVDataService';
 // Dynamic import for Chart.js components
 const ChartComponent = React.lazy(() => import('./ChartComponent'));
 
+// Map of property code -> display name (keeps dropdown labels readable)
+const PROPERTY_CODE_NAME_MAP: { [code: string]: string } = {
+    '720': '1515 Surf',
+    '720a': '1515 Surf Affordable',
+    '702': '1919 Market',
+    '658': '34 Berry',
+    '776': 'Allen',
+    '841': 'Altaire North',
+    '.841_842': 'Altaire North and South',
+    '842': 'Altaire South',
+    '887': 'Arlo',
+    '806': 'Arrowwood',
+    '494': 'Aurora',
+    '.coreb': 'Build to Core',
+    '742': 'Cielo',
+    '465': 'Commons of McLean',
+    '.core': 'Core',
+    '.reg_dc': 'DC Metro',
+    '823': 'Greenwich Oaks',
+    '824': 'Greenwich Place',
+    '723': 'Kingston',
+    '704': 'Morse',
+    '.reg_owp': 'Owned Portfolio',
+    '749': 'Park 151',
+    '.reg_rsd': 'Portfolio',
+    '707': 'Sage',
+    '811': 'The Batch Yard',
+    '708': 'The Birch at 51 Washington',
+    '750': 'The Broad Exchange Bldg',
+    '691': 'The Edison',
+    '722': 'The Ryland',
+    '832': 'Valley & Bloom',
+    '427': 'Wentworth'
+};
+
 export interface ICSVReportViewerProps {
     libraryName: string;
     folderPath?: string;
@@ -787,7 +822,23 @@ export default class CSVReportViewer extends React.Component<ICSVReportViewerPro
         }));
 
         const propertyOptions: IDropdownOption[] = data
-            ? Array.from(new Set(data.rows.map(r => String(r['Property'] || '').trim()))).filter(p => p).map(p => ({ key: p, text: p }))
+            ? Array.from(new Set(data.rows.map(r => String(r['Property'] || '').trim()))).filter(p => p).map(p => {
+                const code = p;
+                const mappedName = PROPERTY_CODE_NAME_MAP[code];
+                let textLabel = mappedName ? `${mappedName} (${code})` : code;
+                // if no mapping, try to fetch property 'Name' from property details
+                if (!mappedName) {
+                    try {
+                        const pd = this.getSimplePropertyDetails(code);
+                        if (pd && pd.name) {
+                            textLabel = `${pd.name} (${code})`;
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                return { key: code, text: textLabel };
+            })
             : [];
 
         const chartTypeOptions: IDropdownOption[] = [
