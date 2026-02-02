@@ -1,0 +1,77 @@
+.propertyManager {
+  padding: 12px;
+}
+
+.propertyManager h2 {
+  margin: 0 0 12px 0;
+}
+
+.pmHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pmLayout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.leftColumn {
+  width: 240px;
+  min-width: 180px;
+}
+
+.viewsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.viewButton {
+  text-align: left;
+}
+
+.viewButtonActive {
+  background: #eaeff6;
+  border-left: 4px solid #0078d4;
+}
+
+.bodyColumn {
+  flex: 1 1 auto;
+}
+
+.pmCard {
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.pmFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.pmTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pmSchemaTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pmSchemaTable td, .pmSchemaTable th {
+  padding: 6px;
+  border-bottom: 1px solid #eee;
+}

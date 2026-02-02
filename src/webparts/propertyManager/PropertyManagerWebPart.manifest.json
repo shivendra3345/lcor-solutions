@@ -1,0 +1,23 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "d4e5b4d5-0000-4000-8000-000000000000",
+  "alias": "PropertyManagerWebPart",
+  "componentType": "WebPart",
+  "version": "1.0.0",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "loaderConfig": {
+    "entryModuleId": "property-manager-web-part",
+    "internalModuleBaseUrls": ["https://localhost:4321/dist/"],
+    "scriptResources": {}
+  }
+  ,
+  "preconfiguredEntries": [
+    {
+      "title": { "default": "Property Manager" },
+      "description": { "default": "Manage the Properties list (CRUD + schema/views)" },
+      "officeFabricIconFontName": "Edit",
+      "properties": {}
+    }
+  ]
+}

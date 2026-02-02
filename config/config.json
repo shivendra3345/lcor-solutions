@@ -10,6 +10,15 @@
         }
       ]
     }
+    ,
+    "property-manager-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/propertyManager/PropertyManagerWebPart.js",
+          "manifest": "./src/webparts/propertyManager/PropertyManagerWebPart.manifest.json"
+        }
+      ]
+    }
   },
   "externals": {},
   "localizedResources": {
