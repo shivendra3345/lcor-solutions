@@ -1070,15 +1070,22 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
                 for (const f of bulkSelectedFields) {
                     if (typeof bulkFormValues[f] !== 'undefined') values[f] = bulkFormValues[f];
                 }
+                console.log('Bulk update - values to prepare:', values, 'bulkFormValues:', bulkFormValues);
                 const payload = prepareDataForSave(values);
+                console.log('Bulk update - prepared payload:', payload);
                 // only call update if payload contains keys
                 if (payload && Object.keys(payload).length > 0) {
                     try {
+                        console.log('Calling updateItem for item', it.Id, 'with payload:', payload);
                         await PropertyService.updateItem((it as any).Id as number, payload);
+                        console.log('Successfully updated item', it.Id);
                     } catch (e) {
                         // ignore per-item failures but surface a generic error later
                         // continue processing remaining items
+                        console.error('Error updating item', it.Id, ':', e);
                     }
+                } else {
+                    console.log('Skipping item', it.Id, '- empty payload');
                 }
                 done += 1;
                 setBulkProgress({ done, total: items.length });

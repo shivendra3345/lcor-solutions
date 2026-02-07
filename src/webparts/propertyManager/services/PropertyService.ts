@@ -68,18 +68,36 @@ export class PropertyService {
         // - v2: sp.web.lists
         // - v3: sp.web.lists (should also exist)
         // - some packaging shapes may expose lists at top-level: sp.lists
+        // - v3 Proxy: accessing sp.web.lists might work due to Proxy getter
         try {
-            if (spInstance.web && spInstance.web.lists) {
-                return spInstance.web.lists.getByTitle('Property');
+            // eslint-disable-next-line no-console
+            console.log('PropertyService.getList: checking spInstance shape. Keys:', Object.keys(spInstance), 'Has web?', !!spInstance.web, 'Has lists?', !!spInstance.lists);
+
+            // Try v3 Proxy access first (accessing property on Proxy triggers getter)
+            if (spInstance.web) {
+                try {
+                    const list = spInstance.web.lists.getByTitle('Property');
+                    // eslint-disable-next-line no-console
+                    console.log('PropertyService.getList: successfully accessed spInstance.web.lists');
+                    return list;
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.log('PropertyService.getList: failed to access spInstance.web.lists:', e);
+                }
             }
 
+            // Fallback to top-level lists
             if (spInstance.lists && typeof spInstance.lists.getByTitle === 'function') {
+                // eslint-disable-next-line no-console
+                console.log('PropertyService.getList: using spInstance.lists');
                 return spInstance.lists.getByTitle('Property');
             }
 
             // As a last attempt, if spInstance has a 'get' function or appears to be a factory, try calling it
             if (typeof spInstance === 'function') {
                 try {
+                    // eslint-disable-next-line no-console
+                    console.log('PropertyService.getList: spInstance is a function, attempting to call it');
                     const inst = spInstance();
                     if (inst.web && inst.web.lists) {
                         return inst.web.lists.getByTitle('Property');
@@ -89,15 +107,14 @@ export class PropertyService {
                 }
             }
 
-            console.error('PropertyService: spInstance present but no .web.lists or top-level .lists found. spInstance keys=', Object.keys(spInstance));
+            // eslint-disable-next-line no-console
+            console.error('PropertyService: spInstance present but no .web.lists or top-level .lists found. spInstance keys=', Object.keys(spInstance), 'spInstance type=', typeof spInstance, 'spInstance._root=', spInstance._root);
             throw new Error('PropertyService: spInstance does not expose lists; initialization shape may be incorrect.');
         } catch (err) {
             console.error('PropertyService.getList detection error', err);
             throw err;
         }
-    }
-
-    /** Get list fields (schema) - returns useful field properties */
+    }    /** Get list fields (schema) - returns useful field properties */
     public static async getFields(): Promise<any[]> {
         try {
             if (spInstance && (spInstance.web || spInstance.lists)) {
@@ -258,8 +275,13 @@ export class PropertyService {
             const res = await this.getList().items.add(data);
             return res.data as IPropertyItem;
         } catch (e) {
-            console.error('PropertyService.createItem error', e);
-            throw e;
+            console.error('PropertyService.createItem PnPJS error, trying REST fallback:', e);
+            try {
+                return await this.createItemViaRest(data);
+            } catch (restErr) {
+                console.error('PropertyService.createItem REST fallback also failed:', restErr);
+                throw restErr;
+            }
         }
     }
 
@@ -267,8 +289,13 @@ export class PropertyService {
         try {
             await this.getList().items.getById(id).update(data);
         } catch (e) {
-            console.error('PropertyService.updateItem error', e);
-            throw e;
+            console.error('PropertyService.updateItem PnPJS error, trying REST fallback:', e);
+            try {
+                return await this.updateItemViaRest(id, data);
+            } catch (restErr) {
+                console.error('PropertyService.updateItem REST fallback also failed:', restErr);
+                throw restErr;
+            }
         }
     }
 
@@ -276,8 +303,13 @@ export class PropertyService {
         try {
             await this.getList().items.getById(id).delete();
         } catch (e) {
-            console.error('PropertyService.deleteItem error', e);
-            throw e;
+            console.error('PropertyService.deleteItem PnPJS error, trying REST fallback:', e);
+            try {
+                return await this.deleteItemViaRest(id);
+            } catch (restErr) {
+                console.error('PropertyService.deleteItem REST fallback also failed:', restErr);
+                throw restErr;
+            }
         }
     }
 
@@ -422,6 +454,85 @@ export class PropertyService {
             // eslint-disable-next-line no-console
             console.warn('PropertyService.searchUsers failed', e);
             return [];
+        }
+    }
+
+    // ---------- REST write operation helpers ----------
+    private static async createItemViaRest(data: { [k: string]: any }): Promise<IPropertyItem> {
+        if (!PropertyService._context) {
+            throw new Error('PropertyService: no SPFx context for REST calls');
+        }
+        const webUrl = PropertyService._context.pageContext.web.absoluteUrl;
+        const url = `${webUrl}/_api/web/lists/getByTitle('Property')/items`;
+
+        console.log('PropertyService.createItemViaRest:', url, data);
+
+        const body = JSON.stringify(data);
+        const res = await PropertyService._context.spHttpClient.post(url, SPHttpClient.configurations.v1, { body });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error('REST create failed:', res.status, res.statusText, errorText);
+            throw new Error(`REST create failed: ${res.status} ${res.statusText} - ${errorText}`);
+        }
+
+        const result = await res.json();
+
+        let normalized: any = result;
+        if (result && typeof result === 'object') {
+            if ((result as any).d) normalized = (result as any).d;
+        }
+        return normalized as IPropertyItem;
+    }
+
+    private static async updateItemViaRest(id: number, data: { [k: string]: any }): Promise<void> {
+        if (!PropertyService._context) {
+            throw new Error('PropertyService: no SPFx context for REST calls');
+        }
+        const webUrl = PropertyService._context.pageContext.web.absoluteUrl;
+        const url = `${webUrl}/_api/web/lists/getByTitle('Property')/items(${id})`;
+
+        console.log('PropertyService.updateItemViaRest:', url, data);
+
+        const body = JSON.stringify(data);
+        const requestHeaders: any = new Headers();
+        requestHeaders.append('Content-Type', 'application/json;charset=utf-8');
+        requestHeaders.append('X-HTTP-Method', 'MERGE');
+        requestHeaders.append('If-Match', '*');
+
+        const res = await PropertyService._context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+            body,
+            headers: requestHeaders
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error('REST update failed:', res.status, res.statusText, errorText);
+            throw new Error(`REST update failed: ${res.status} ${res.statusText} - ${errorText}`);
+        }
+    }
+
+    private static async deleteItemViaRest(id: number): Promise<void> {
+        if (!PropertyService._context) {
+            throw new Error('PropertyService: no SPFx context for REST calls');
+        }
+        const webUrl = PropertyService._context.pageContext.web.absoluteUrl;
+        const url = `${webUrl}/_api/web/lists/getByTitle('Property')/items(${id})`;
+
+        console.log('PropertyService.deleteItemViaRest:', url);
+
+        const requestHeaders: any = new Headers();
+        requestHeaders.append('X-HTTP-Method', 'DELETE');
+        requestHeaders.append('If-Match', '*');
+
+        const res = await PropertyService._context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+            headers: requestHeaders
+        });
+
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error('REST delete failed:', res.status, res.statusText, errorText);
+            throw new Error(`REST delete failed: ${res.status} ${res.statusText} - ${errorText}`);
         }
     }
 }
