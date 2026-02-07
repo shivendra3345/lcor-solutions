@@ -657,7 +657,27 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
 
     const columnsForView = (): IColumn[] => {
         const viewCols = getViewFields(selectedView);
-        return viewCols.map((k, i) => ({ key: k, name: k, fieldName: k, minWidth: 100, maxWidth: 300, isResizable: true }));
+        const cols: IColumn[] = viewCols.map((k, i) => ({ key: k, name: k, fieldName: k, minWidth: 100, maxWidth: 300, isResizable: true }));
+        // Add a single actions column (one set of icons per row)
+        cols.push({
+            key: 'actions',
+            name: '',
+            fieldName: 'actions',
+            minWidth: 60,
+            maxWidth: 120,
+            isResizable: false,
+            onRender: (item?: any) => {
+                if (!item) return null;
+                return (
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <IconButton iconProps={{ iconName: 'Edit' }} title="Edit" ariaLabel="Edit" onClick={() => openEdit(item)} />
+                        <IconButton iconProps={{ iconName: 'Delete' }} title="Delete" ariaLabel="Delete" onClick={() => doDelete(item)} />
+                    </div>
+                );
+            }
+        });
+
+        return cols;
     };
 
     const onFormFieldChange = (field: string, value: any) => {
@@ -1132,6 +1152,8 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
                                         onRenderItemColumn={(item?: any, index?: number, column?: IColumn) => {
                                             if (!item || !column) return null;
                                             const fieldName = (column.fieldName || column.key || '');
+                                            // If this is the dedicated actions column, let the column's onRender handle it
+                                            if (String(fieldName || '').toLowerCase() === 'actions') return null;
                                             // Try to render person fields (single/multi) with display names
                                             const meta = getMetaForField(fieldName);
                                             const rawType = meta && (meta.TypeAsString || meta.FieldType || meta.Type) ? String(meta.TypeAsString || meta.FieldType || meta.Type) : '';
@@ -1174,14 +1196,9 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
                                                 displayValue = (val === null || typeof val === 'undefined') ? '' : String(val);
                                             }
 
+                                            // Default cell render: value only (actions are rendered in the actions column)
                                             return (
-                                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                    <div>{displayValue}</div>
-                                                    <div>
-                                                        <IconButton iconProps={{ iconName: 'Edit' }} title="Edit" ariaLabel="Edit" onClick={() => openEdit(item)} />
-                                                        <IconButton iconProps={{ iconName: 'Delete' }} title="Delete" ariaLabel="Delete" onClick={() => doDelete(item)} />
-                                                    </div>
-                                                </div>
+                                                <div>{displayValue}</div>
                                             );
                                         }}
                                     />
