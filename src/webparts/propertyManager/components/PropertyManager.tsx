@@ -614,6 +614,10 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
 
     function getViewFields(v?: string): string[] {
         if (!v) return ['Title'];
+
+        // System fields to exclude (non-editable fields)
+        const systemFields = ['ID', 'ContentType', 'Modified', 'Created', 'Author', 'Editor', 'ModifiedBy', '_UIVersionString', 'Attachments', 'GUID', '_ModerationStatus', '_ModerationComments', 'LinkTitle', 'LinkTitleNoMenu', 'Edit', 'DocIcon'];
+
         // Prefer fields from fetched views (if available)
         if (views && views.length > 0) {
             // Try to find by Title first, then by Id
@@ -624,13 +628,23 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
             if (found) {
                 const vf = found.ViewFields;
                 // ViewFields sometimes comes as an array, or as an object with Items, or as a string
-                if (Array.isArray(vf) && vf.length > 0) return vf as string[];
-                if (vf && Array.isArray(vf.Items) && vf.Items.length > 0) return vf.Items as string[];
-                // Some responses use 'Results' or 'results' or comma-separated strings
-                if (vf && Array.isArray(vf.Results) && vf.Results.length > 0) return vf.Results as string[];
-                if (vf && Array.isArray(vf.results) && vf.results.length > 0) return vf.results as string[];
-                if (typeof vf === 'string' && vf.trim().length > 0) {
-                    return vf.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+                let fieldList: string[] = [];
+                if (Array.isArray(vf) && vf.length > 0) fieldList = vf as string[];
+                else if (vf && Array.isArray(vf.Items) && vf.Items.length > 0) fieldList = vf.Items as string[];
+                else if (vf && Array.isArray(vf.Results) && vf.Results.length > 0) fieldList = vf.Results as string[];
+                else if (vf && Array.isArray(vf.results) && vf.results.length > 0) fieldList = vf.results as string[];
+                else if (typeof vf === 'string' && vf.trim().length > 0) {
+                    fieldList = vf.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+                }
+
+                // Filter out non-editable system fields, but always keep Title
+                if (fieldList.length > 0) {
+                    const filtered = fieldList.filter((f: string) => f === 'Title' || systemFields.indexOf(f) < 0);
+                    // Ensure Title is always first if it's not already in the list
+                    if (filtered.indexOf('Title') < 0) {
+                        filtered.unshift('Title');
+                    }
+                    return filtered;
                 }
             }
         }
@@ -638,7 +652,27 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
         return (DEFAULT_VIEWS as any)[v] || ['Title'];
     }
 
-    // helper to find field metadata for a given view field name (same logic as renderFieldControl uses)
+    // Filter fields to only show user-created, editable, non-hidden fields
+    const getEditableFields = () => {
+        if (!fields || !Array.isArray(fields)) return [];
+        // System fields to exclude
+        const systemFields = ['ID', 'ContentType', 'Modified', 'Created', 'Author', 'Editor', 'ModifiedBy', '_UIVersionString', 'Attachments', 'GUID', '_ModerationStatus', '_ModerationComments', 'LinkTitle', 'LinkTitleNoMenu', 'Edit', 'DocIcon'];
+
+        return fields.filter((f: any) => {
+            // Always include Title field even if it has special properties
+            if (f.InternalName === 'Title') return true;
+
+            // Exclude hidden fields
+            if (f.Hidden) return false;
+            // Exclude read-only fields
+            if (f.ReadOnlyField) return false;
+            // Exclude system fields
+            if (systemFields.indexOf(f.InternalName) >= 0) return false;
+            // Only include if it has a title (user-created fields typically have titles)
+            if (!f.Title) return false;
+            return true;
+        });
+    };    // helper to find field metadata for a given view field name (same logic as renderFieldControl uses)
     function getMetaForField(fieldInternalName: string) {
         let meta = null as any;
         if (fields && Array.isArray(fields)) {
@@ -1321,7 +1355,7 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
                         <Dropdown
                             placeholder="Select fields"
                             multiSelect
-                            options={(fields || []).map((f: any) => ({ key: String(f.InternalName), text: f.Title || f.InternalName }))}
+                            options={getEditableFields().map((f: any) => ({ key: String(f.InternalName), text: f.Title || f.InternalName }))}
                             selectedKeys={bulkSelectedFields}
                             onChange={(_, option) => {
                                 if (!option) return;
