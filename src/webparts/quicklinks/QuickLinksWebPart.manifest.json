@@ -1,0 +1,27 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "b4c2f7d0-1a2b-4d3e-9f0a-123456789abc",
+  "alias": "QuickLinksWebPart",
+  "componentType": "WebPart",
+  "version": "1.0.0",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "loaderConfig": {
+    "entryModuleId": "quicklinks-web-part",
+    "internalModuleBaseUrls": ["https://localhost:4321/dist/"],
+    "scriptResources": {}
+  },
+  "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
+  "supportsThemeVariants": true,
+  "preconfiguredEntries": [
+    {
+      "title": { "default": "Quick Links" },
+      "description": { "default": "Display a list of quick links with pagination" },
+      "officeFabricIconFontName": "Link",
+      "properties": {
+        "listName": "QuickLinks",
+        "pageTitle": "Quick Links"
+      }
+    }
+  ]
+}

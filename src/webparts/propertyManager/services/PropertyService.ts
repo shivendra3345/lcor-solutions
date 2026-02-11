@@ -165,6 +165,82 @@ export class PropertyService {
         }
     }
 
+    /** Get items from an arbitrary list by title. Useful for other webparts (e.g., KPI list). */
+    public static async getItemsFromList(listTitle: string, filter?: string, top = 500, expandFields?: string[]): Promise<IPropertyItem[]> {
+        if (!listTitle) return [];
+        try {
+            if (spInstance && (spInstance.web || spInstance.lists)) {
+                const list = spInstance.web.lists.getByTitle(listTitle);
+                let q: any = list.items.select('*');
+                if (expandFields && expandFields.length) {
+                    try {
+                        q = q.expand(...expandFields);
+                    } catch (e) {
+                        // some PnP shapes expect a single string comma-separated
+                        q = q.expand(expandFields.join(','));
+                    }
+                }
+                q = q.top(top);
+                const items = await q.get();
+                return items as IPropertyItem[];
+            }
+
+            // REST fallback using stored SPFx context
+            if (!PropertyService._context) throw new Error('PropertyService: no SPFx context for REST calls');
+            const webUrl = PropertyService._context.pageContext.web.absoluteUrl;
+
+            // Build select and expand clauses for REST when expandFields provided
+            const selects: string[] = ['*'];
+            let expandClause = '';
+            if (expandFields && expandFields.length) {
+                // Do NOT encode expand/select tokens (slashes/comma must remain for OData)
+                expandClause = `&$expand=${expandFields.join(',')}`;
+                // include common subfields for person fields
+                // If an expand token contains a slash (nested expand like "Employee/JobTitle"),
+                // avoid appending "/Id" or other subfield tokens to the nested path — that
+                // produced invalid tokens like "Employee/JobTitle/Id" in some tenants.
+                // Instead, add the nested path itself to the select (SharePoint accepts
+                // selecting the expanded navigation property), and add per-field subs only
+                // for top-level expand tokens.
+                expandFields.forEach((ef) => {
+                    if (ef.includes('/')) {
+                        // For nested expands, include the path itself in $select and
+                        // skip adding subfields that would create invalid tokens.
+                        selects.push(ef);
+                    } else {
+                        // For top-level person/lookup fields, include safe subfields.
+                        const subs = [`${ef}/Id`, `${ef}/Title`, `${ef}/EMail`];
+                        selects.push(...subs);
+                    }
+                });
+            }
+
+            const selectClause = `$select=${selects.join(',')}`;
+            const url = `${webUrl}/_api/web/lists/getByTitle('${encodeURIComponent(listTitle)}')/items?${selectClause}${expandClause}&$top=${top}`;
+            // eslint-disable-next-line no-console
+            console.debug('PropertyService.getItemsFromList/rest url', url);
+            const res = await PropertyService._context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+            // If the REST call failed, log the response text for debugging
+            if (!res.ok) {
+                try {
+                    const txt = await res.text();
+                    // eslint-disable-next-line no-console
+                    console.error('PropertyService.getItemsFromList REST error', res.status, res.statusText, txt);
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.error('PropertyService.getItemsFromList REST error and failed to read body', res.status, res.statusText);
+                }
+            }
+            const data = await res.json();
+            if (data && data.value) return data.value as IPropertyItem[];
+            if (data && data.d && data.d.results) return data.d.results as IPropertyItem[];
+            return [];
+        } catch (e) {
+            console.error('PropertyService.getItemsFromList error', e);
+            throw e;
+        }
+    }
+
     /** Get choices or lookup info for a specific field (Choice / Lookup) */
     public static async getFieldChoices(internalName: string): Promise<any> {
         try {

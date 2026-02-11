@@ -75,3 +75,12 @@
   padding: 6px;
   border-bottom: 1px solid #eee;
 }
+
+.tableScrollContainer {
+  overflow-x: auto;
+  margin-bottom: 12px;
+  border: 1px solid #e1e1e1;
+  min-height: 200px;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}

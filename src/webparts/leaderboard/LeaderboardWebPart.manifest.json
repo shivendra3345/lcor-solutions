@@ -1,0 +1,29 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "a3d9f6b2-7f22-4b5e-9f0a-1c2d3e4f5a6b",
+  "alias": "LeaderboardWebPart",
+  "componentType": "WebPart",
+  "version": "1.0.0",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "loaderConfig": {
+    "entryModuleId": "leaderboard-web-part",
+    "internalModuleBaseUrls": ["https://localhost:4321/dist/"],
+    "scriptResources": {}
+  },
+  "supportedHosts": ["SharePointWebPart", "TeamsPersonalApp", "TeamsTab", "SharePointFullPage"],
+  "supportsThemeVariants": true,
+  "preconfiguredEntries": [
+    {
+      "title": { "default": "Leaderboard" },
+      "description": { "default": "Display KPI leaderboard" },
+      "officeFabricIconFontName": "Trophy",
+      "properties": {
+        "title": "Leaderboard",
+        "subtitle": "",
+        "listName": "KPI",
+        "categoryField": "Category"
+      }
+    }
+  ]
+}

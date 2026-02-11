@@ -19,6 +19,15 @@
         }
       ]
     }
+    ,
+    "leaderboard-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/leaderboard/LeaderboardWebPart.js",
+          "manifest": "./src/webparts/leaderboard/LeaderboardWebPart.manifest.json"
+        }
+      ]
+    }
   },
   "externals": {},
   "localizedResources": {

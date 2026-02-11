@@ -18,6 +18,7 @@ import {
     MessageBarType
     , DatePicker, Checkbox
     , Pivot, PivotItem
+    , SearchBox
 } from '@fluentui/react';
 import { NormalPeoplePicker } from '@fluentui/react/lib/Pickers';
 import styles from './PropertyManager.module.scss';
@@ -62,6 +63,12 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
     const [bulkFormValues, setBulkFormValues] = useState<{ [k: string]: any }>({});
     const [bulkLoading, setBulkLoading] = useState(false);
     const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+    // Data viewing enhancements: search, pagination
+    const [titleSearchFilter, setTitleSearchFilter] = useState<string>('');
+    const [currentPage, setCurrentPage] = useState<number>(1);
+    const [itemsPerPage] = useState<number>(35);
+    const [forceHorizontalScroll, setForceHorizontalScroll] = useState<boolean>(false);
 
     const resolvePeopleSuggestions = async (filterText: string) => {
         const q = String(filterText || '').trim();
@@ -689,17 +696,49 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
         return meta;
     }
 
+    // Filter items by Title search
+    const getFilteredItems = (): IPropertyItem[] => {
+        if (!items || !Array.isArray(items)) return [];
+        const searchTerm = String(titleSearchFilter || '').toLowerCase().trim();
+        if (!searchTerm) return items;
+        return items.filter((item: IPropertyItem) => {
+            const title = String(item.Title || '').toLowerCase();
+            return title.includes(searchTerm);
+        });
+    };
+
+    // Get paginated items based on filtered results and current page
+    const getPaginatedItems = (filteredItems: IPropertyItem[]): IPropertyItem[] => {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        return filteredItems.slice(startIndex, endIndex);
+    };
+
+    // Calculate total pages for pagination
+    const getTotalPages = (filteredItemsCount: number): number => {
+        return Math.ceil(filteredItemsCount / itemsPerPage) || 1;
+    };
+
     const columnsForView = (): IColumn[] => {
         const viewCols = getViewFields(selectedView);
-        const cols: IColumn[] = viewCols.map((k, i) => ({ key: k, name: k, fieldName: k, minWidth: 100, maxWidth: 300, isResizable: true }));
+        const cols: IColumn[] = viewCols.map((k, i) => ({
+            key: k,
+            name: k,
+            fieldName: k,
+            minWidth: 200,
+            maxWidth: 400,
+            isResizable: true,
+            isCollapsible: false
+        }));
         // Add a single actions column (one set of icons per row)
         cols.push({
             key: 'actions',
-            name: '',
+            name: 'Actions',
             fieldName: 'actions',
-            minWidth: 60,
-            maxWidth: 120,
+            minWidth: 120,
+            maxWidth: 150,
             isResizable: false,
+            isCollapsible: false,
             onRender: (item?: any) => {
                 if (!item) return null;
                 return (
@@ -712,9 +751,7 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
         });
 
         return cols;
-    };
-
-    const onFormFieldChange = (field: string, value: any) => {
+    }; const onFormFieldChange = (field: string, value: any) => {
         setFormValues(prev => ({ ...prev, [field]: value }));
     };
     function renderFieldControl(fieldInternalName: string) {
@@ -1183,66 +1220,134 @@ export const PropertyManager: React.FunctionComponent<IPropertyManagerProps> = (
                             <div style={{ marginTop: 6 }}>
                                 {loading && <Spinner size={SpinnerSize.medium} label="Loading..." />}
                                 {!loading && items && (
-                                    <DetailsList
-                                        items={items}
-                                        columns={columnsForView()}
-                                        setKey="set"
-                                        selectionMode={0}
-                                        onItemInvoked={(item) => openEdit(item as IPropertyItem)}
-                                        styles={{ root: { marginTop: 8 } }}
-                                        onRenderItemColumn={(item?: any, index?: number, column?: IColumn) => {
-                                            if (!item || !column) return null;
-                                            const fieldName = (column.fieldName || column.key || '');
-                                            // If this is the dedicated actions column, let the column's onRender handle it
-                                            if (String(fieldName || '').toLowerCase() === 'actions') return null;
-                                            // Try to render person fields (single/multi) with display names
-                                            const meta = getMetaForField(fieldName);
-                                            const rawType = meta && (meta.TypeAsString || meta.FieldType || meta.Type) ? String(meta.TypeAsString || meta.FieldType || meta.Type) : '';
-                                            const type = rawType.toLowerCase();
-                                            const fieldTypeKind = meta && (meta.FieldTypeKind || meta.FieldType || meta.Type) ? Number(meta.FieldTypeKind || meta.FieldType || meta.Type) : undefined;
-                                            const allowMulti = !!(meta && (meta.AllowMultipleValues || meta.AllowMultiple));
-                                            const isPersonField = fieldTypeKind === 20 || type.includes('user') || type.includes('person') || (meta && meta.TypeAsString && /user/i.test(String(meta.TypeAsString))) || (meta && typeof meta.SchemaXml === 'string' && /UserField/i.test(meta.SchemaXml));
+                                    <>
+                                        {/* Search Box for Title filter */}
+                                        <div style={{ marginBottom: 12, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+                                            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                                <SearchBox
+                                                    placeholder="Search by Title..."
+                                                    value={titleSearchFilter}
+                                                    onChange={(e, newValue) => {
+                                                        setTitleSearchFilter(newValue || '');
+                                                        setCurrentPage(1); // Reset to first page when filtering
+                                                    }}
+                                                />
+                                                <Checkbox label="Force horizontal scroll (test)" checked={forceHorizontalScroll} onChange={(_, checked) => setForceHorizontalScroll(!!checked)} />
+                                            </div>
+                                            <div style={{ color: '#666', fontSize: 13 }}>
+                                                <span style={{ marginRight: 12 }}>Total: {items ? items.length : 0}</span>
+                                                <span style={{ marginRight: 12 }}>Filtered: {getFilteredItems().length}</span>
+                                                <span>Pages: {getTotalPages(getFilteredItems().length)}</span>
+                                            </div>
+                                        </div>
 
-                                            let displayValue = '';
-                                            if (isPersonField) {
-                                                const rawVal = item[fieldName];
-                                                const idVal = item[`${fieldName}Id`];
-                                                if (allowMulti) {
-                                                    let names: string[] = [];
-                                                    if (Array.isArray(rawVal) && rawVal.length > 0) {
-                                                        names = rawVal.map((u: any) => u && (u.Title || u.title || u.Name || u.LoginName || u.Email) ? (u.Title || u.title || u.Name || u.LoginName || u.Email) : String(u && (u.Id || u.ID || u.id) || '')).filter(Boolean);
-                                                    } else if (idVal && Array.isArray(idVal.results)) {
-                                                        names = idVal.results.map((id: any) => userCache && userCache.has(String(id)) ? userCache.get(String(id))! : String(id));
-                                                    } else if (Array.isArray(idVal)) {
-                                                        names = idVal.map((id: any) => userCache && userCache.has(String(id)) ? userCache.get(String(id))! : String(id));
-                                                    } else if (typeof idVal === 'string' && idVal.indexOf(',') >= 0) {
-                                                        names = idVal.split(',').map((s: string) => s.trim()).filter((s: string) => s).map(s => userCache && userCache.has(s) ? userCache.get(s)! : s);
-                                                    } else if (typeof idVal === 'string' && idVal.trim()) {
-                                                        const s = idVal.trim();
-                                                        names = [(userCache && userCache.has(s) ? userCache.get(s)! : s)];
-                                                    }
-                                                    displayValue = names.join(', ');
-                                                } else {
-                                                    if (rawVal && (rawVal.Title || rawVal.title || rawVal.Name || rawVal.LoginName || rawVal.Email)) {
-                                                        displayValue = rawVal.Title || rawVal.title || rawVal.Name || rawVal.LoginName || rawVal.Email || '';
-                                                    } else if (typeof idVal === 'number' || (typeof idVal === 'string' && idVal.trim())) {
-                                                        const s = String(idVal);
-                                                        displayValue = (userCache && userCache.has(s)) ? userCache.get(s)! : s;
-                                                    } else if (typeof rawVal === 'string' && rawVal.trim()) {
-                                                        displayValue = rawVal;
-                                                    }
-                                                }
-                                            } else {
-                                                const val = fieldName ? item[fieldName] : undefined;
-                                                displayValue = (val === null || typeof val === 'undefined') ? '' : String(val);
-                                            }
+                                        {/* Horizontally scrollable DetailsList */}
+                                        <div style={{
+                                            overflowX: 'auto',
+                                            overflowY: 'hidden',
+                                            marginBottom: 12,
+                                            border: '1px solid #e1e1e1',
+                                            minHeight: 200,
+                                            WebkitOverflowScrolling: 'touch'
+                                        }}>
+                                            <div style={{ minWidth: forceHorizontalScroll ? `${columnsForView().length * 220}px` : undefined }}>
+                                                <DetailsList
+                                                    items={getPaginatedItems(getFilteredItems())}
+                                                    columns={columnsForView()}
+                                                    setKey="set"
+                                                    selectionMode={0}
+                                                    onItemInvoked={(item) => openEdit(item as IPropertyItem)}
+                                                    styles={{
+                                                        root: { marginTop: 8 }
+                                                    }}
+                                                    onRenderItemColumn={(item?: any, index?: number, column?: IColumn) => {
+                                                        if (!item || !column) return null;
+                                                        const fieldName = (column.fieldName || column.key || '');
+                                                        // If this is the dedicated actions column, let the column's onRender handle it
+                                                        if (String(fieldName || '').toLowerCase() === 'actions') return null;
+                                                        // Try to render person fields (single/multi) with display names
+                                                        const meta = getMetaForField(fieldName);
+                                                        const rawType = meta && (meta.TypeAsString || meta.FieldType || meta.Type) ? String(meta.TypeAsString || meta.FieldType || meta.Type) : '';
+                                                        const type = rawType.toLowerCase();
+                                                        const fieldTypeKind = meta && (meta.FieldTypeKind || meta.FieldType || meta.Type) ? Number(meta.FieldTypeKind || meta.FieldType || meta.Type) : undefined;
+                                                        const allowMulti = !!(meta && (meta.AllowMultipleValues || meta.AllowMultiple));
+                                                        const isPersonField = fieldTypeKind === 20 || type.includes('user') || type.includes('person') || (meta && meta.TypeAsString && /user/i.test(String(meta.TypeAsString))) || (meta && typeof meta.SchemaXml === 'string' && /UserField/i.test(meta.SchemaXml));
 
-                                            // Default cell render: value only (actions are rendered in the actions column)
-                                            return (
-                                                <div>{displayValue}</div>
-                                            );
-                                        }}
-                                    />
+                                                        let displayValue = '';
+                                                        if (isPersonField) {
+                                                            const rawVal = item[fieldName];
+                                                            const idVal = item[`${fieldName}Id`];
+                                                            if (allowMulti) {
+                                                                let names: string[] = [];
+                                                                if (Array.isArray(rawVal) && rawVal.length > 0) {
+                                                                    names = rawVal.map((u: any) => u && (u.Title || u.title || u.Name || u.LoginName || u.Email) ? (u.Title || u.title || u.Name || u.LoginName || u.Email) : String(u && (u.Id || u.ID || u.id) || '')).filter(Boolean);
+                                                                } else if (idVal && Array.isArray(idVal.results)) {
+                                                                    names = idVal.results.map((id: any) => userCache && userCache.has(String(id)) ? userCache.get(String(id))! : String(id));
+                                                                } else if (Array.isArray(idVal)) {
+                                                                    names = idVal.map((id: any) => userCache && userCache.has(String(id)) ? userCache.get(String(id))! : String(id));
+                                                                } else if (typeof idVal === 'string' && idVal.indexOf(',') >= 0) {
+                                                                    names = idVal.split(',').map((s: string) => s.trim()).filter((s: string) => s).map(s => userCache && userCache.has(s) ? userCache.get(s)! : s);
+                                                                } else if (typeof idVal === 'string' && idVal.trim()) {
+                                                                    const s = idVal.trim();
+                                                                    names = [(userCache && userCache.has(s) ? userCache.get(s)! : s)];
+                                                                }
+                                                                displayValue = names.join(', ');
+                                                            } else {
+                                                                if (rawVal && (rawVal.Title || rawVal.title || rawVal.Name || rawVal.LoginName || rawVal.Email)) {
+                                                                    displayValue = rawVal.Title || rawVal.title || rawVal.Name || rawVal.LoginName || rawVal.Email || '';
+                                                                } else if (typeof idVal === 'number' || (typeof idVal === 'string' && idVal.trim())) {
+                                                                    const s = String(idVal);
+                                                                    displayValue = (userCache && userCache.has(s)) ? userCache.get(s)! : s;
+                                                                } else if (typeof rawVal === 'string' && rawVal.trim()) {
+                                                                    displayValue = rawVal;
+                                                                }
+                                                            }
+                                                        } else {
+                                                            const val = fieldName ? item[fieldName] : undefined;
+                                                            displayValue = (val === null || typeof val === 'undefined') ? '' : String(val);
+                                                        }
+
+                                                        // Default cell render: value only (actions are rendered in the actions column)
+                                                        return (
+                                                            <div>{displayValue}</div>
+                                                        );
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Pagination Controls */}
+                                        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', paddingTop: 16, paddingBottom: 8, gap: 16 }}>
+                                            {/* Navigation Buttons */}
+                                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                                <IconButton
+                                                    iconProps={{ iconName: 'ChevronLeft' }}
+                                                    title="Previous Page"
+                                                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                                                    disabled={currentPage === 1}
+                                                    styles={{ root: { minWidth: 'auto', minHeight: 'auto' } }}
+                                                />
+                                                <IconButton
+                                                    iconProps={{ iconName: 'ChevronRight' }}
+                                                    title="Next Page"
+                                                    onClick={() => setCurrentPage(Math.min(getTotalPages(getFilteredItems().length), currentPage + 1))}
+                                                    disabled={currentPage >= getTotalPages(getFilteredItems().length)}
+                                                    styles={{ root: { minWidth: 'auto', minHeight: 'auto' } }}
+                                                />
+                                            </div>
+
+                                            {/* Page Info */}
+                                            <div style={{ fontSize: 14, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                <span>
+                                                    Page {currentPage} of {getTotalPages(getFilteredItems().length)}
+                                                </span>
+                                                {getFilteredItems().length > 0 && <span style={{ color: '#666' }}>
+                                                    ({(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, getFilteredItems().length)} of {getFilteredItems().length} items)
+                                                </span>}
+                                                {titleSearchFilter && <span style={{ color: '#0078d4', fontStyle: 'italic' }}>Filtered</span>}
+                                            </div>
+                                        </div>
+                                    </>
                                 )}
                             </div>
                         </PivotItem>
