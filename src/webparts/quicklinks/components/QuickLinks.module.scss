@@ -1,0 +1,53 @@
+:root {
+  --leaderboard-bg: linear-gradient(90deg,#4b7cff,#2ec0ff);
+}
+.quicklinks {
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+}
+.header {
+  padding: 18px 20px;
+  background: var(--leaderboard-bg);
+  color: #fff;
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.headerTitle {
+  font-size:20px;
+  font-weight:700;
+  margin:0;
+}
+.headerSubtitle {
+  font-size:12px;
+  opacity:0.95;
+}
+.list {
+  padding: 16px;
+}
+.item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  
+  margin-bottom:10px;
+  
+  color: #fff;
+  border-radius: 8px;
+}
+.itemLeft {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-direction:column;
+  align-items:flex-start;
+}
+.itemTitle{font-size:16px;}
+.itemSub{font-size:12px;opacity:0.9}
+.controls{display:flex;gap:8px;align-items:center;padding:10px 16px}
+.carouselDots{display:flex;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:#dcdcdc}
+.dot.active{background:#0078d4}

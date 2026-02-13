@@ -10,6 +10,7 @@ import { PropertyService } from '../propertyManager/services/PropertyService';
 export interface IQuickLinksWebPartProps {
     listName?: string;
     pageTitle?: string;
+    pageSize?: number | string;
 }
 
 export default class QuickLinksWebPart extends BaseClientSideWebPart<IQuickLinksWebPartProps> {
@@ -22,7 +23,8 @@ export default class QuickLinksWebPart extends BaseClientSideWebPart<IQuickLinks
         const element: React.ReactElement = React.createElement(QuickLinks, {
             context: this.context,
             listName: this.properties.listName || 'QuickLinks',
-            pageTitle: this.properties.pageTitle || 'Quick Links'
+            pageTitle: this.properties.pageTitle || 'Quick Links',
+            pageSize: Number(this.properties.pageSize) || 15
         } as any);
 
         ReactDom.render(element, this.domElement);

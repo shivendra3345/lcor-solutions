@@ -28,6 +28,15 @@
         }
       ]
     }
+    ,
+    "quicklinks-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/quicklinks/QuickLinksWebPart.js",
+          "manifest": "./src/webparts/quicklinks/QuickLinksWebPart.manifest.json"
+        }
+      ]
+    }
   },
   "externals": {},
   "localizedResources": {

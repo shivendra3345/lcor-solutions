@@ -20,7 +20,8 @@
       "officeFabricIconFontName": "Link",
       "properties": {
         "listName": "QuickLinks",
-        "pageTitle": "Quick Links"
+        "pageTitle": "Quick Links",
+        "pageSize": 15
       }
     }
   ]
